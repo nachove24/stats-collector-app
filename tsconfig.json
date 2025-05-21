@@ -11,7 +11,8 @@
     "baseUrl": "./src",
     "paths": {
       "*": ["node_modules/*", "*"]
-    }
+    },
+    "jsx": "react-jsx"  // <--- Agrega esta línea
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "**/*.spec.ts"]
