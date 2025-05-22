@@ -39,7 +39,34 @@ export default function Setup() {
     setJugadores((prev: Jugador[]) => [...prev, crearJugador(prev.length + 1)])
   }
 
+  const handleEliminarJugador = (setJugadores: any, jugadorId: string) => {
+    setJugadores((prev: Jugador[]) => prev.filter(j => j.id !== jugadorId))
+  }
+
+  const handleToggleTitular = (jugadores: Jugador[], setJugadores: any, jugadorId: string) => {
+    const titularesCount = jugadores.filter(j => j.titular && j.id !== jugadorId).length
+    
+    setJugadores((prev: Jugador[]) => prev.map(j => {
+      if (j.id === jugadorId) {
+        // Si ya es titular, siempre permitir destildar
+        if (j.titular) return { ...j, titular: false }
+        // Si no es titular, verificar que no exceda el máximo
+        return titularesCount < 5 ? { ...j, titular: true } : j
+      }
+      return j
+    }))
+  }
+
   const handleGuardar = async () => {
+    // Validar que cada equipo tenga al menos 1 titular
+    const titularesA = jugadoresA.filter(j => j.titular).length
+    const titularesB = jugadoresB.filter(j => j.titular).length
+
+    if (titularesA < 1 || titularesB < 1) {
+      alert('Cada equipo debe tener al menos 1 jugador titular')
+      return
+    }
+
     const equipoA: Equipo = {
       id: crypto.randomUUID(),
       nombre: nombreA,
@@ -55,6 +82,7 @@ export default function Setup() {
     }
 
     const config: PartidoConfig = {
+      id: crypto.randomUUID(),
       equipoA,
       equipoB,
       periodo: 1,
@@ -63,39 +91,60 @@ export default function Setup() {
     }
 
     setConfig(config)
-    await addDoc(collection(db, 'partidos'), config) // guarda en Firestore
+    await addDoc(collection(db, 'partidos'), config)
     history.push('/match')
   }
 
   const renderJugadores = (jugadores: Jugador[], setJugadores: any) => (
-  jugadores.map((j, idx) => (
-    <div key={j.id} className="flex gap-2 mb-2">
-      <input
-        className="w-1/4 p-2 bg-white text-gray-800 border border-gray-300 rounded shadow-sm focus:ring-2 focus:ring-orange-300 focus:border-orange-300 focus:outline-none"
-        type="number"
-        min="0"
-        placeholder="#"
-        value={j.numero}
-        onChange={(e) => {
-          const updated = [...jugadores]
-          updated[idx].numero = parseInt(e.target.value) || 0
-          setJugadores(updated)
-        }}
-      />
-      <input
-        className="w-3/4 p-2 bg-white text-gray-800 border border-gray-300 rounded shadow-sm focus:ring-2 focus:ring-orange-300 focus:border-orange-300 focus:outline-none"
-        placeholder={`Jugador #${j.numero}`}
-        value={j.nombre}
-        onChange={(e) => {
-          const updated = [...jugadores]
-          updated[idx].nombre = e.target.value
-          setJugadores(updated)
-        }}
-      />
-    </div>
-  ))
-)
-
+    jugadores.map((j, idx) => {
+      const titularesCount = jugadores.filter(jug => jug.titular).length
+      return (
+        <div key={j.id} className="flex gap-2 mb-2 items-center">
+          <input
+            className="w-1/6 p-2 bg-white text-gray-800 border border-gray-300 rounded shadow-sm focus:ring-2 focus:ring-orange-300 focus:border-orange-300 focus:outline-none"
+            type="number"
+            min="0"
+            placeholder="#"
+            value={j.numero}
+            onChange={(e) => {
+              const updated = [...jugadores]
+              updated[idx].numero = parseInt(e.target.value) || 0
+              setJugadores(updated)
+            }}
+          />
+          <input
+            className="w-2/4 p-2 bg-white text-gray-800 border border-gray-300 rounded shadow-sm focus:ring-2 focus:ring-orange-300 focus:border-orange-300 focus:outline-none"
+            placeholder={`Jugador #${j.numero}`}
+            value={j.nombre}
+            onChange={(e) => {
+              const updated = [...jugadores]
+              updated[idx].nombre = e.target.value
+              setJugadores(updated)
+            }}
+          />
+          <div className="flex items-center gap-2 w-1/4">
+            <input
+              type="checkbox"
+              checked={j.titular}
+              onChange={() => handleToggleTitular(jugadores, setJugadores, j.id)}
+              className="w-4 h-4 text-orange-500 border-gray-300 rounded focus:ring-orange-500"
+              title={!j.titular && titularesCount >= 5 ? "Máximo 5 titulares permitidos" : "Marcar como titular"}
+            />
+            <label className="text-sm text-gray-600">Titular</label>
+          </div>
+          <button
+            onClick={() => handleEliminarJugador(setJugadores, j.id)}
+            className="p-2 text-red-500 hover:text-red-700 focus:outline-none"
+            title="Eliminar jugador"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+      )
+    })
+  )
 
   return (
     <div className="min-h-screen bg-gray-100 p-4">

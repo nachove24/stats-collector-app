@@ -25,7 +25,6 @@ export interface Jugador {
   encestado3PT: number
 }
 
-
 export interface Equipo {
   id: string
   nombre: string

@@ -1,11 +1,11 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useHistory } from 'react-router-dom'
 import { useTimer } from '../hooks/useTimer'
 import { useMatchStore } from '../features/match/matchSlice'
 import { useConfigStore } from '../features/config/configSlice'
 import { aplicarEvento } from '../collectors'
 import { guardarEvento } from '../services'
-import { Jugador } from '../types'
+import { Jugador, PartidoConfig, Equipo } from '../types'
 import { collection, addDoc, doc, setDoc } from 'firebase/firestore'
 import { db } from '../firebase'
 import { v4 as uuidv4 } from 'uuid'
@@ -36,34 +36,25 @@ const calcularPuntosEquipo = (jugadores: Jugador[]) =>
 
 export default function Match() {
   const history = useHistory()
+  const { currentConfig, eventos, agregarEvento, deshacerEvento } = useMatchStore()
   const { config } = useConfigStore()
-  const {
-    currentConfig,
-    setConfig,
-    agregarEvento,
-    deshacerEvento,
-    partidoId,
-    setPartidoId,
-    eventos
-  } = useMatchStore()
 
   const { seconds, toggle, reset, running } = useTimer(config?.duracionPeriodo || 600)
 
   // 🔁 Generar ID único si no existe
   useEffect(() => {
-    if (!partidoId) {
-      const nuevoId = uuidv4()
-      setPartidoId(nuevoId)
-    }
-
-    if (config) {
-      setConfig(config)
-    } else {
+    if (!config) {
       history.push('/')
     }
-  }, [config, partidoId, setConfig, setPartidoId, history])
+  }, [config, history])
 
-  if (!currentConfig || !partidoId) return null
+  if (!config || !currentConfig) {
+    return (
+      <div className="min-h-screen bg-gray-100 p-4 flex items-center justify-center">
+        <div className="text-xl text-gray-600">Cargando configuración...</div>
+      </div>
+    )
+  }
 
   const handleEvento = async (jugadorId: string, tipo: string) => {
     const tiempo = formatTime(seconds)
@@ -72,8 +63,6 @@ export default function Match() {
     agregarEvento(evento)
     const nuevoConfig = aplicarEvento(currentConfig!, evento)
     useMatchStore.setState({ currentConfig: nuevoConfig })
-
-    await guardarEvento(partidoId, evento)
   }
 
   const handleFinalizarPartido = async () => {
@@ -93,9 +82,9 @@ export default function Match() {
         return
       }
 
-
+      const partidoId = crypto.randomUUID()
       const resumen = {
-        id: partidoId, // Usamos el mismo ID para el campo 'id' en el documento
+        id: partidoId,
         timestamp: Date.now(),
         equipoA: {
           nombre: config.equipoA.nombre,
@@ -107,28 +96,20 @@ export default function Match() {
           puntos: calcularPuntosEquipo(currentConfig!.equipoB.jugadores),
           jugadores: config.equipoB.jugadores
         },
-        duracionPeriodo: config.duracionPeriodo, // Duración configurada
-        maxPeriodos: config.maxPeriodos,         // Máx periodos configurados
+        duracionPeriodo: config.duracionPeriodo,
+        maxPeriodos: config.maxPeriodos,
         finalizado: true,
-        // Podrías agregar más datos aquí si los necesitas en el resumen
-        // como los eventos registrados, etc.
       };
       
-      // 🔥 Guarda el resumen en Firestore usando setDoc para un ID específico
       try {
-        if (!partidoId) {
-          alert("ID de partido no definido.")
-          return
-        }
         await setDoc(doc(db, 'partidos', partidoId), resumen);
         console.log("Resumen del partido guardado con ID:", partidoId);
       } catch (error) {
         console.error("Error al guardar el resumen del partido:", error);
-        alert("Hubo un error al guardar el partido."); // Notificar al usuario
-        return; // Detener si falla al guardar
+        alert("Hubo un error al guardar el partido.");
+        return;
       }
 
-      // 🔁 Navegar al resumen
       history.push(`/summary/${partidoId}`)
     }  
   }
@@ -136,64 +117,32 @@ export default function Match() {
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Header con navegación y acciones principales */}
-      <header className="bg-white shadow-md p-4">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <button 
-            onClick={() => history.goBack()} 
-            className="px-4 py-2 bg-gray-600 hover:bg-gray-700 rounded text-white shadow transition-colors flex items-center"
-          >
-            <ArrowLeft className="w-5 h-5 mr-2" />
-            VOLVER
-          </button>
-          
-          <h1 className="text-2xl font-bold text-center text-gray-800 flex items-center">
-            <Timer className="w-8 h-8 text-orange-500 mr-2" />
-            Partido en Curso
-          </h1>
-          
-          <div className="flex gap-2">
+      <header className="bg-white shadow-md py-2 px-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center">
+            <button 
+              onClick={() => history.goBack()} 
+              className="px-3 py-1 bg-gray-600 hover:bg-gray-700 rounded text-white shadow transition-colors flex items-center"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              VOLVER
+            </button>
+            
             <button
               onClick={deshacerEvento}
-              className="px-4 py-2 bg-orange-500 hover:bg-orange-600 rounded text-white shadow transition-colors flex items-center"
+              className="px-3 py-1 bg-orange-500 hover:bg-orange-600 rounded text-white shadow transition-colors flex items-center ml-2"
             >
-              <RotateCcw className="w-5 h-5 mr-2" />
+              <RotateCcw className="w-4 h-4 mr-1" />
               Deshacer
             </button>
-            
-            <button 
-              onClick={() => history.push(`/edit/${partidoId}`)} 
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 rounded text-white shadow transition-colors flex items-center"
-            >
-              <Edit className="w-5 h-5 mr-2" />
-              Editar
-            </button>
-            
-            <button 
-              onClick={() => history.push(`/summary/${partidoId}`)} 
-              className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded text-white shadow transition-colors flex items-center"
-            >
-              <FileText className="w-5 h-5 mr-2" />
-              Resumen
-            </button>
-            
-            <button 
-              onClick={handleFinalizarPartido} 
-              className="px-4 py-2 bg-red-500 hover:bg-red-600 rounded text-white shadow transition-colors flex items-center"
-            >
-              <Flag className="w-5 h-5 mr-2" />
-              Finalizar
-            </button>
           </div>
-        </div>
-      </header>
-
-      <div className="max-w-7xl mx-auto p-4">
-        {/* Sección de cronómetro y periodo */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex justify-center items-center">
-            <div className="flex flex-col items-center mx-4">
-              <h2 className="text-lg font-semibold mb-2 text-gray-800">Periodo</h2>
-              <div className="flex items-center gap-2">
+          
+          {/* Cronómetro y controles integrados en el header */}
+          <div className="flex items-center gap-4">
+            {/* Periodo */}
+            <div className="flex items-center">
+              <span className="text-sm font-semibold text-gray-600 mr-2">Periodo</span>
+              <div className="flex items-center">
                 <button
                   onClick={() => {
                     if (config && config.periodo > 1)
@@ -201,12 +150,12 @@ export default function Match() {
                         currentConfig: { ...config, periodo: config.periodo - 1 }
                       })
                   }}
-                  className="p-2 bg-gray-200 hover:bg-gray-300 rounded-full"
+                  className="p-1 bg-gray-200 hover:bg-gray-300 rounded-l"
                 >
-                  <ChevronLeft className="w-5 h-5 text-gray-800" />
+                  <ChevronLeft className="w-4 h-4 text-gray-800" />
                 </button>
                 
-                <div className="text-3xl font-bold bg-gray-800 text-white px-6 py-2 rounded min-w-[80px] text-center">
+                <div className="font-bold bg-gray-800 text-white px-3 py-1 text-lg">
                   {config ? config.periodo : 1}
                 </div>
                 
@@ -217,40 +166,56 @@ export default function Match() {
                         currentConfig: { ...config, periodo: config.periodo + 1 }
                       })
                   }}
-                  className="p-2 bg-gray-200 hover:bg-gray-300 rounded-full"
+                  className="p-1 bg-gray-200 hover:bg-gray-300 rounded-r"
                 >
-                  <ChevronRight className="w-5 h-5 text-gray-800" />
+                  <ChevronRight className="w-4 h-4 text-gray-800" />
                 </button>
               </div>
             </div>
             
-            <div className="flex flex-col items-center mx-8">
-              <h2 className="text-lg font-semibold mb-2 text-gray-800 flex items-center">
-                <Clock className="w-5 h-5 text-orange-500 mr-2" />
-                Cronómetro
-              </h2>
-              <div className="text-5xl font-mono bg-black text-yellow-400 px-6 py-3 rounded-lg shadow-inner">
+            {/* Cronómetro */}
+            <div className="flex items-center">
+              <div className="text-3xl font-mono bg-black text-yellow-400 px-4 py-1 rounded shadow-inner">
                 {formatTime(seconds)}
               </div>
-              <div className="flex gap-2 mt-3">
-                <button className="p-2 bg-gray-200 hover:bg-gray-300 rounded-full">
-                  <SkipBack className="w-5 h-5 text-gray-800" />
-                </button>
-                <button 
-                  onClick={toggle} 
-                  className={`px-6 py-2 rounded text-white shadow transition-colors flex items-center ${running ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`}
-                >
-                  {running ? <Pause className="w-5 h-5 mr-2" /> : <Play className="w-5 h-5 mr-2" />}
-                  {running ? 'Pausar' : 'Reanudar'}
-                </button>
-                <button className="p-2 bg-gray-200 hover:bg-gray-300 rounded-full">
-                  <SkipForward className="w-5 h-5 text-gray-800" />
-                </button>
-              </div>
+              <button 
+                onClick={toggle} 
+                className={`px-3 py-1 rounded text-white shadow transition-colors flex items-center ml-2 ${running ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`}
+              >
+                {running ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              </button>
             </div>
           </div>
+          
+          <div className="flex gap-2">
+            <button 
+              onClick={() => history.push('/edit')} 
+              className="px-3 py-1 bg-blue-500 hover:bg-blue-600 rounded text-white shadow transition-colors flex items-center"
+            >
+              <Edit className="w-4 h-4 mr-1" />
+              Editar
+            </button>
+            
+            <button 
+              onClick={() => history.push('/summary')} 
+              className="px-3 py-1 bg-green-500 hover:bg-green-600 rounded text-white shadow transition-colors flex items-center"
+            >
+              <FileText className="w-4 h-4 mr-1" />
+              Resumen
+            </button>
+            
+            <button 
+              onClick={handleFinalizarPartido} 
+              className="px-3 py-1 bg-red-500 hover:bg-red-600 rounded text-white shadow transition-colors flex items-center"
+            >
+              <Flag className="w-4 h-4 mr-1" />
+              Finalizar
+            </button>
+          </div>
         </div>
+      </header>
 
+      <div className="max-w-7xl mx-auto p-4">
         {/* Sección de equipos y marcador */}
         <div className="grid grid-cols-2 gap-6">
           {config && [config.equipoA, config.equipoB].map((equipo, idx) => {
@@ -261,15 +226,15 @@ export default function Match() {
             
             return (
               <div key={equipo.id} className={`${bgColor} rounded-lg shadow-lg overflow-hidden`}>
-                {/* Encabezado del equipo con nombre y puntos */}
-                <div className={`${accentColor} p-4 text-white`}>
-                  <div className="flex justify-between items-center">
-                    <h2 className="text-xl font-bold">{equipo.nombre}</h2>
-                    <div className="text-4xl font-bold bg-black px-4 py-1 rounded">
+                {/* Encabezado del equipo más compacto */}
+                <div className={`${accentColor} py-1 px-3 text-white flex justify-between items-center`}>
+                  <h2 className="text-lg font-bold">{equipo.nombre}</h2>
+                  <div className="flex items-center">
+                    <span className="text-xs mr-2">Faltas: 0</span>
+                    <div className="text-2xl font-bold bg-black px-3 py-0.5 rounded">
                       {calcularPuntosEquipo(equipo.jugadores)}
                     </div>
                   </div>
-                  <div className="text-sm mt-1">Faltas del equipo: 0</div>
                 </div>
                 
                 {/* Lista de jugadores */}
